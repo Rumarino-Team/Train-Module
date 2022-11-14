@@ -3,7 +3,7 @@
 # (2) Write the Function to execute the training of the training session
 # (3) Write the documentation and all the steps to do the training and testing in a read.me
 # (4) make a bash file for dowloading all the dependencies.
-# (5) Make the GitHub repositorie
+# (5) Make the GitHub repository
 
 def getNamesDirectory(path):
     list_img=[img for img in os.listdir(path) if img.endswith('.png')==True]
@@ -90,15 +90,15 @@ def separateData(dataset_dir = "./dataset"):
     train, val = train_test_split(train, test_size=0.11, shuffle=True)
 
     #  Move the images to the corresponding folders
-    for i in tqdm(range(len(train_pd))):
+    for i in tqdm(range(len(train))):
         os.system("cp " + dataset_dir + "/" + train[i] + " train/" )
         os.system("cp " +dataset_dir+ "/" + train[i].replace(".png", ".txt") + " ./train")
 
-    for i in tqdm(range(len(test_pd))):
+    for i in tqdm(range(len(test))):
         os.system("cp " +dataset_dir+ "/" +test[i] + " ./test")
         os.system("cp " +dataset_dir+ "/" +test[i].replace(".png", ".txt") + " ./test")
     
-    for i in tqdm(range(len(val_pd))):
+    for i in tqdm(range(len(val))):
         os.system("cp " +dataset_dir+ "/" + val[i] + " ./val")
         os.system("cp " +dataset_dir+ "/" + val[i].replace(".png", ".txt") + " ./val")
 
@@ -108,6 +108,7 @@ if __name__ == "__main__":
     import tqdm 
     import os
     import pandas as pd
+    import numpy as np
     from sklearn.model_selection import train_test_split
     parser = argparse.ArgumentParser()
     parser.add_argument("--training-session",help= "Specifie what training session we are doing in the cross validation")
