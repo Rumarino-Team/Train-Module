@@ -23,5 +23,3 @@ venv\Scripts\activate
 #  Install the python dependencies
 pip install -r yolov7/requirements.txt
 
-# install pandas
-pip install pandas
