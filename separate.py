@@ -111,7 +111,7 @@ if __name__ == "__main__":
     import numpy as np
     from sklearn.model_selection import train_test_split
     parser = argparse.ArgumentParser()
-    parser.add_argument("--training-session",help= "Specifie what training session we are doing in the cross validation")
+    parser.add_argument("--training_session",help= "Specifie what training session we are doing in the cross validation")
     parser.add_argument("--csv", help= "the csv file that have the shuffle training dataset")
     parser.add_argument("--dataset", help= "the directory of the dataset")
     parser.add_argument("--crossval", help= "the directory of the train folder")
