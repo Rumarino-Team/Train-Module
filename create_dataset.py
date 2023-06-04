@@ -5,8 +5,6 @@ import cv2
 import numpy as np
 import random
 import argparse
-from pytransform3d.rotations import matrix_from_euler_xyz
-
 def getVideoFramesFromYoutube(video_url: str, output_dir: str, output_format: str, fps: int):
     # Create a YouTube object with the URL
     yt = pytube.YouTube(video_url)
@@ -44,9 +42,51 @@ def getVideoFrames(video_path: str, output_dir: str, output_format: str, fps: in
         os.path.join(png_dir, f"%03d.{output_format}")
     ])
 
+import os
+import cv2
+import random
+import numpy as np
+
+def is_collision(new_box, existing_boxes):
+    for existing_box in existing_boxes:
+        if (new_box[0] < existing_box[2] and
+            new_box[2] > existing_box[0] and
+            new_box[1] < existing_box[3] and
+            new_box[3] > existing_box[1]):
+            return True
+    return False
+
+def matrix_from_euler_xyz(euler_angles):
+    # Assuming the angles are in radians.
+    roll = euler_angles[0]
+    pitch = euler_angles[1]
+    yaw = euler_angles[2]
+
+    cos_roll = np.cos(roll)
+    sin_roll = np.sin(roll)
+    cos_pitch = np.cos(pitch)
+    sin_pitch = np.sin(pitch)
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+
+    R_x = np.array([[1, 0, 0],
+                    [0, cos_roll, -sin_roll],
+                    [0, sin_roll, cos_roll]])
+
+    R_y = np.array([[cos_pitch, 0, sin_pitch],
+                    [0, 1, 0],
+                    [-sin_pitch, 0, cos_pitch]])
+
+    R_z = np.array([[cos_yaw, -sin_yaw, 0],
+                    [sin_yaw, cos_yaw, 0],
+                    [0, 0, 1]])
+
+    R = np.dot(R_z, np.dot(R_y, R_x))
+
+    return R
+
 def createDataset(output_dir: str, output_format: str, object_path: str):
     # Ensure dataset directory exists, if not, create it
-    output_dir = os.path.join('datasetless')
     os.makedirs(output_dir, exist_ok=True)
 
     # List all files in directory
@@ -75,6 +115,9 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
         # List to store bounding boxes for each image
         bounding_boxes = []
 
+        # Store the bounding boxes for collision detection
+        collision_boxes = []
+
         # Place objects on the background image
         for _ in range(num_objects):
             # Randomly select an object image
@@ -91,7 +134,6 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             
             # Resize the object image
             object_img_resized = cv2.resize(object_img, None, fx=scale, fy=scale)
-
             # Create a random rotation angle
             angle = random.uniform(-180, 180)
             
@@ -118,6 +160,13 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
             start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
 
+            # Check for collision and update position if needed
+            while is_collision([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]], collision_boxes):
+                start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
+                start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
+
+            collision_boxes.append([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]])
+
             # Split the object image into BGR channels and Alpha channel
             b, g, r, alpha = cv2.split(object_img_rotated)
 
@@ -139,10 +188,10 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
 
         # Save your new image
         cv2.imwrite(os.path.join(output_dir, f'dataset{i}.{output_format}'), background_img)
-        
         # Save your bounding box coordinates
         with open(os.path.join(output_dir, f'dataset{i}.txt'), 'w') as f:
             f.writelines(bounding_boxes)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
