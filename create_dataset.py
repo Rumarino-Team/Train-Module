@@ -151,11 +151,12 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             roll = random.uniform(-np.pi, np.pi)
 
             # Create the rotation matrix for 3D rotation
-            R = matrix_from_euler_xyz([pitch, yaw, roll])
+            # R = matrix_from_euler_xyz([pitch, yaw, roll])
 
             # Apply the 3D rotation
-            object_img_rotated = cv2.warpPerspective(object_img_rotated, R[:2, :2], (object_img_rotated.shape[1], object_img_rotated.shape[0]))
-
+            # object_img_rotated = cv2.warpPerspective(object_img_rotated, R[:2, :2], (object_img_rotated.shape[1], object_img_rotated.shape[0]))
+            # Rotate the object image for 2D rotation
+            object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
             # Select a random location to place the object
             start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
             start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
