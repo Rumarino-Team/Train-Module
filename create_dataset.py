@@ -146,9 +146,9 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
 
             # Create a random pitch, yaw, roll for 3D rotation
-            pitch = random.uniform(-np.pi, np.pi)
-            yaw = random.uniform(-np.pi, np.pi)
-            roll = random.uniform(-np.pi, np.pi)
+            # pitch = random.uniform(-np.pi, np.pi)
+            # yaw = random.uniform(-np.pi, np.pi)
+            # roll = random.uniform(-np.pi, np.pi)
 
             # Create the rotation matrix for 3D rotation
             # R = matrix_from_euler_xyz([pitch, yaw, roll])
@@ -156,19 +156,33 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             # Apply the 3D rotation
             # object_img_rotated = cv2.warpPerspective(object_img_rotated, R[:2, :2], (object_img_rotated.shape[1], object_img_rotated.shape[0]))
             # Rotate the object image for 2D rotation
-            # object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
             # Select a random location to place the object
             start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
             start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
-
+            counter = 0
             # Check for collision and update position if needed
-            while is_collision([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]], collision_boxes):
+            while is_collision([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]], collision_boxes) :
                 start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
                 start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
-
+                scale = min(random.uniform(0.1, 1), min(background_img.shape[0]/object_img.shape[0], background_img.shape[1]/object_img.shape[1]))
+                object_img_rotated = cv2.resize(object_img, None, fx=scale, fy=scale)
+                # counter += 1
+                # # Create a random scale factor
+                # scale = min(random.uniform(0.2, 1.5), min(background_img.shape[0]/object_img.shape[0], background_img.shape[1]/object_img.shape[1]))
+                # # Resize the object image
+                # object_img_resized = cv2.resize(object_img, None, fx=scale, fy=scale)
+                # # Create a random rotation angle
+                # angle = random.uniform(-180, 180)
+                # # Get the rotation matrix for 2D rotation
+                # (h, w) = object_img_resized.shape[:2]
+                # center = (w / 2, h / 2)
+                # M = cv2.getRotationMatrix2D(center, angle, 1.0)
+                # # Rotate the object image for 2D rotation
+                # object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
             collision_boxes.append([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]])
 
             # Split the object image into BGR channels and Alpha channel
+            print("Llego has aqui")
             b, g, r, alpha = cv2.split(object_img_rotated)
 
             # Create a 3 channel image and a mask from alpha channel for blending
@@ -186,7 +200,6 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             y_center = (start_y + bb_height * background_img.shape[0] / 2) / background_img.shape[0]
 
             bounding_boxes.append(f"{class_id} {x_center} {y_center} {bb_width} {bb_height}\n")
-
         # Save your new image
         cv2.imwrite(os.path.join(output_dir, f'dataset{i}.{output_format}'), background_img)
         # Save your bounding box coordinates
