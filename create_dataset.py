@@ -5,6 +5,17 @@ import cv2
 import numpy as np
 import random
 import argparse
+import torch
+from torchvision import transforms
+# from albumentations import Compose, Rotate, Resize, ShiftScaleRotate
+from albumentations import (
+    Compose, Rotate, Resize, ShiftScaleRotate, OneOf, 
+    IAAAdditiveGaussianNoise, GaussNoise, 
+    MotionBlur, MedianBlur, Blur, 
+    OpticalDistortion, GridDistortion, IAAPiecewiseAffine,
+    HueSaturationValue, CLAHE, Perspective, RandomScale
+)
+
 def getVideoFramesFromYoutube(video_url: str, output_dir: str, output_format: str, fps: int):
     # Create a YouTube object with the URL
     yt = pytube.YouTube(video_url)
@@ -42,11 +53,6 @@ def getVideoFrames(video_path: str, output_dir: str, output_format: str, fps: in
         os.path.join(png_dir, f"%03d.{output_format}")
     ])
 
-import os
-import cv2
-import random
-import numpy as np
-
 def is_collision(new_box, existing_boxes):
     for existing_box in existing_boxes:
         if (new_box[0] < existing_box[2] and
@@ -56,34 +62,69 @@ def is_collision(new_box, existing_boxes):
             return True
     return False
 
-def matrix_from_euler_xyz(euler_angles):
-    # Assuming the angles are in radians.
-    roll = euler_angles[0]
-    pitch = euler_angles[1]
-    yaw = euler_angles[2]
 
-    cos_roll = np.cos(roll)
-    sin_roll = np.sin(roll)
-    cos_pitch = np.cos(pitch)
-    sin_pitch = np.sin(pitch)
-    cos_yaw = np.cos(yaw)
-    sin_yaw = np.sin(yaw)
 
-    R_x = np.array([[1, 0, 0],
-                    [0, cos_roll, -sin_roll],
-                    [0, sin_roll, cos_roll]])
+def load_image(image_path):
+    image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)  # Unchanged to keep the alpha channel
+    return image  # Convert from BGRA to RGBA
 
-    R_y = np.array([[cos_pitch, 0, sin_pitch],
-                    [0, 1, 0],
-                    [-sin_pitch, 0, cos_pitch]])
+def overlay_images(background, foreground, x, y):
+    # We assume the foreground image is RGBA and the background is RGB.
+    fg_img = foreground[..., :3]
+    fg_alpha = foreground[..., 3]/255
 
-    R_z = np.array([[cos_yaw, -sin_yaw, 0],
-                    [sin_yaw, cos_yaw, 0],
-                    [0, 0, 1]])
+    # Apply the foreground's alpha channel to its RGB channels.
+    fg_alpha_expanded = np.expand_dims(fg_alpha, axis=2)
+    fg_img_alpha = fg_alpha_expanded * fg_img
 
-    R = np.dot(R_z, np.dot(R_y, R_x))
+    background = background[..., :3]
+    # Expand the alpha channel for the background
+    bg_alpha_expanded = np.expand_dims(1 - fg_alpha, axis=2)
+    bg_img_alpha = bg_alpha_expanded * background[y:y+fg_img.shape[0], x:x+fg_img.shape[1], :3]  # Corrected this line
 
-    return R
+    # Add the alpha-weighted foreground and background.
+    overlaid_section = fg_img_alpha + bg_img_alpha
+
+    # Replace original with overlay
+    result = background.copy()
+    result[y:y+fg_img.shape[0], x:x+fg_img.shape[1]] = overlaid_section
+
+    return result
+
+
+
+def data_augmentation_pipeline():
+    return Compose([
+        Rotate(limit=45, p=0.9, border_mode=cv2.BORDER_CONSTANT),
+        Resize(100, 100),
+        RandomScale(scale_limit=0.5, interpolation=cv2.INTER_LINEAR, p=0.5),
+        ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.50, rotate_limit=45, p=.75, border_mode=cv2.BORDER_CONSTANT),
+        OneOf([
+            IAAAdditiveGaussianNoise(),
+            GaussNoise(),
+        ], p=0.2),
+        OneOf([
+            MotionBlur(p=.2),
+            MedianBlur(blur_limit=3, p=0.1),
+            Blur(blur_limit=3, p=0.1),
+        ], p=0.2),
+        OneOf([
+            OpticalDistortion(p=0.3),
+            GridDistortion(p=.1),
+            IAAPiecewiseAffine(p=0.3),
+        ], p=0.2),
+                OneOf([
+            OpticalDistortion(p=0.3),
+            GridDistortion(p=.1),
+            IAAPiecewiseAffine(p=0.3),
+            Perspective(scale=(0.05, 0.1)),  # Adding Perspective transformation
+        ], p=0.2),
+        # OneOf([
+        #     HueSaturationValue(10,15,10),
+        #     CLAHE(clip_limit=2),         
+        # ], p=0.3),
+        
+    ])
 
 def createDataset(output_dir: str, output_format: str, object_path: str):
     # Ensure dataset directory exists, if not, create it
@@ -94,18 +135,19 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
     object_files = os.listdir(object_path)
 
     # Filter out all non-png files
-    png_files = [i for i in files if i.endswith(f'.{output_format}')]
+    background_files = [i for i in files if i.endswith(f'.{output_format}')]
     object_png_files = [i for i in object_files if i.endswith(f'.{output_format}')]
 
     # Assign each object a unique class ID
     object_class_ids = {object_file: i for i, object_file in enumerate(object_png_files)}
 
     # Sort files alphabetically to maintain a consistent order
-    png_files.sort()
+    background_files.sort()
     object_png_files.sort()
+    transform = data_augmentation_pipeline()
 
     # Loop over your background images
-    for i, file in enumerate(png_files):
+    for i, file in enumerate(background_files):
         # Load the background image
         background_img = cv2.imread(os.path.join(output_dir, file))
 
@@ -127,79 +169,27 @@ def createDataset(output_dir: str, output_format: str, object_path: str):
             class_id = object_class_ids[object_file]
 
             # Load your object image
-            object_img = cv2.imread(os.path.join(object_path, object_file), -1)  # -1 to include the alpha channel if exists
-            
-            # Create a random scale factor
-            scale = min(random.uniform(0.2, 1.5), min(background_img.shape[0]/object_img.shape[0], background_img.shape[1]/object_img.shape[1]))
-            
-            # Resize the object image
-            object_img_resized = cv2.resize(object_img, None, fx=scale, fy=scale)
-            # Create a random rotation angle
-            angle = random.uniform(-180, 180)
-            
-            # Get the rotation matrix for 2D rotation
-            (h, w) = object_img_resized.shape[:2]
-            center = (w / 2, h / 2)
-            M = cv2.getRotationMatrix2D(center, angle, 1.0)
-            
-            # Rotate the object image for 2D rotation
-            object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
-
-            # Create a random pitch, yaw, roll for 3D rotation
-            # pitch = random.uniform(-np.pi, np.pi)
-            # yaw = random.uniform(-np.pi, np.pi)
-            # roll = random.uniform(-np.pi, np.pi)
-
-            # Create the rotation matrix for 3D rotation
-            # R = matrix_from_euler_xyz([pitch, yaw, roll])
-
-            # Apply the 3D rotation
-            # object_img_rotated = cv2.warpPerspective(object_img_rotated, R[:2, :2], (object_img_rotated.shape[1], object_img_rotated.shape[0]))
-            # Rotate the object image for 2D rotation
-            # Select a random location to place the object
-            start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
-            start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
+            object_img = load_image(os.path.join(object_path, object_file))  # -1 to include the alpha channel if exists
+            object_transformed = transform(image=object_img)['image']
+            start_x = random.randint(0,abs( background_img.shape[1] - object_transformed.shape[1]))
+            start_y = random.randint(0, abs(background_img.shape[0] - object_transformed.shape[0]))
             counter = 0
             # Check for collision and update position if needed
-            while is_collision([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]], collision_boxes) :
-                start_x = random.randint(0, background_img.shape[1] - object_img_rotated.shape[1])
-                start_y = random.randint(0, background_img.shape[0] - object_img_rotated.shape[0])
-                scale = min(random.uniform(0.1, 1), min(background_img.shape[0]/object_img.shape[0], background_img.shape[1]/object_img.shape[1]))
-                object_img_rotated = cv2.resize(object_img, None, fx=scale, fy=scale)
-                # counter += 1
-                # # Create a random scale factor
-                # scale = min(random.uniform(0.2, 1.5), min(background_img.shape[0]/object_img.shape[0], background_img.shape[1]/object_img.shape[1]))
-                # # Resize the object image
-                # object_img_resized = cv2.resize(object_img, None, fx=scale, fy=scale)
-                # # Create a random rotation angle
-                # angle = random.uniform(-180, 180)
-                # # Get the rotation matrix for 2D rotation
-                # (h, w) = object_img_resized.shape[:2]
-                # center = (w / 2, h / 2)
-                # M = cv2.getRotationMatrix2D(center, angle, 1.0)
-                # # Rotate the object image for 2D rotation
-                # object_img_rotated = cv2.warpAffine(object_img_resized, M, (w, h))
-            collision_boxes.append([start_x, start_y, start_x + object_img_rotated.shape[1], start_y + object_img_rotated.shape[0]])
-
-            # Split the object image into BGR channels and Alpha channel
-            print("Llego has aqui")
-            b, g, r, alpha = cv2.split(object_img_rotated)
-
-            # Create a 3 channel image and a mask from alpha channel for blending
-            object_rgb = cv2.merge([b, g, r])
-            alpha = cv2.merge([alpha, alpha, alpha]) / 255.0
-
-            # Position the object onto the background using alpha mask for blending
-            background_img[start_y:start_y+object_img_rotated.shape[0], start_x:start_x+object_img_rotated.shape[1]] = \
-                alpha * object_rgb + (1 - alpha) * background_img[start_y:start_y+object_img_rotated.shape[0], start_x:start_x+object_img_rotated.shape[1]]
-
+            # while is_collision([start_x, start_y, start_x + object_transformed.shape[1], start_y + object_transformed.shape[0]], collision_boxes) :
+            #     start_x = random.randint(0, background_img.shape[1] - object_transformed.shape[1])
+            #     start_y = random.randint(0, background_img.shape[0] - object_transformed.shape[0])
+            collision_boxes.append([start_x, start_y, start_x + object_transformed.shape[1], start_y + object_transformed.shape[0]])
             # Save your bounding box coordinates in YOLO format
-            bb_width = object_img_rotated.shape[1] / background_img.shape[1]
-            bb_height = object_img_rotated.shape[0] / background_img.shape[0]
+            bb_width = object_transformed.shape[1] / background_img.shape[1]
+            bb_height = object_transformed.shape[0] / background_img.shape[0]
             x_center = (start_x + bb_width * background_img.shape[1] / 2) / background_img.shape[1]
             y_center = (start_y + bb_height * background_img.shape[0] / 2) / background_img.shape[0]
 
             bounding_boxes.append(f"{class_id} {x_center} {y_center} {bb_width} {bb_height}\n")
+
+            # Overlay your object on the background image
+            background_img = overlay_images(background_img, object_transformed, start_x, start_y)
+
         # Save your new image
         cv2.imwrite(os.path.join(output_dir, f'dataset{i}.{output_format}'), background_img)
         # Save your bounding box coordinates
