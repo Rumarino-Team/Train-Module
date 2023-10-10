@@ -113,7 +113,7 @@ def data_augmentation_pipeline():
         ], p=0.2),
                 OneOf([
             OpticalDistortion(p=0.3),
-            GridDistortion(p=.1)
+            GridDistortion(p=.1),
             Perspective(scale=(0.05, 0.1)),  # Adding Perspective transformation
         ], p=0.2),
         # OneOf([
