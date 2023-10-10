@@ -100,7 +100,6 @@ def data_augmentation_pipeline():
         RandomScale(scale_limit=0.5, interpolation=cv2.INTER_LINEAR, p=0.5),
         ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.50, rotate_limit=45, p=.75, border_mode=cv2.BORDER_CONSTANT),
         OneOf([
-            IAAAdditiveGaussianNoise(),
             GaussNoise(),
         ], p=0.2),
         OneOf([
@@ -111,12 +110,10 @@ def data_augmentation_pipeline():
         OneOf([
             OpticalDistortion(p=0.3),
             GridDistortion(p=.1),
-            IAAPiecewiseAffine(p=0.3),
         ], p=0.2),
                 OneOf([
             OpticalDistortion(p=0.3),
-            GridDistortion(p=.1),
-            IAAPiecewiseAffine(p=0.3),
+            GridDistortion(p=.1)
             Perspective(scale=(0.05, 0.1)),  # Adding Perspective transformation
         ], p=0.2),
         # OneOf([
