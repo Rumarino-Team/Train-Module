@@ -66,6 +66,7 @@ def inference(model_path: str, img_path: str, masking: str, prompt_text: str, nu
   for i in range(num_images):
       image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=num_steps).images[0]
       
+      
       # Save the generated image
       image_path = f"generated_image_{i+1}.png"
       image.save(image_path)
